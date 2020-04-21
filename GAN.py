@@ -57,22 +57,27 @@ class Discriminator(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is 155 x 240 x 240
-            nn.Conv2d(cf.nc, cf.ndf, 4, 2, 1, bias=False),
+            nn.Conv2d(cf.nc, cf.ndf, kernel_size = 3, stride = 1, padding = 1, bias = True),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf) x 32 x 32
-            nn.Conv2d(cf.ndf, cf.ndf * 2, 4, 2, 1, bias=False),
+            nn.MaxPool2d(2, 2),
+            # state size. (ndf) x 120 x 120
+            nn.Conv2d(cf.ndf, cf.ndf * 2, kernel_size = 3, stride = 1, padding = 1, bias = True),
             nn.BatchNorm2d(cf.ndf * 2),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*2) x 16 x 16
-            nn.Conv2d(cf.ndf * 2, cf.ndf * 4, 4, 2, 1, bias=False),
+            nn.MaxPool2d(2, 2),
+            # state size. (ndf*2) x 60 x 60
+            nn.Conv2d(cf.ndf * 2, cf.ndf * 4, kernel_size = 3, stride = 1, padding = 1, bias = True),
             nn.BatchNorm2d(cf.ndf * 4),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*4) x 8 x 8
-            nn.Conv2d(cf.ndf * 4, cf.ndf * 8, 4, 2, 1, bias=False),
+            nn.MaxPool2d(2, 2),
+            # state size. (ndf*4) x 30 x 30
+            nn.Conv2d(cf.ndf * 4, cf.ndf * 8, kernel_size = 3, stride = 1, padding = 1, bias = True),
             nn.BatchNorm2d(cf.ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(cf.ndf * 8, 1, 4, 1, 0, bias=False),
+            nn.MaxPool2d(2, 2),
+            # state size. (ndf*8) x 15 x 15
+            nn.Flatten(),
+            nn.Linear(cf.ndf * 8 * 15 * 15, 1, bias=False),
             nn.Sigmoid()
         )
 
