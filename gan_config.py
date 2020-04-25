@@ -15,7 +15,7 @@ image_size = 240
 nc = 155
 
 # Size of z latent vector (i.e. size of generator input)
-nz = 100
+nz = 155
 
 # Size of feature maps in generator
 ngf = 64
@@ -27,10 +27,11 @@ ndf = 128
 num_epochs = 70
 
 # Learning rate for optimizers
-lr = 0.0002
+lr = 0.001
 
 # Beta1 hyperparam for Adam optimizers
-beta1 = 0.5
+beta1 = 0.9
+beta2 = 0.999
 
 # Number of GPUs available. Use 0 for CPU mode.
 ngpu = 1
