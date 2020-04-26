@@ -27,7 +27,7 @@ ndf = 128
 num_epochs = 70
 
 # Learning rate for optimizers
-lr = 0.001
+lr = 0.002
 
 # Beta1 hyperparam for Adam optimizers
 beta1 = 0.9

@@ -15,6 +15,10 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from IPython.display import HTML
 import gan_config as cf
+import torch.nn.functional as F
+from torch.autograd import Variable
+import torch.nn.init as init
+
 
 
 class conv_block(nn.Module):
@@ -43,6 +47,93 @@ class up_conv(nn.Module):
     def forward(self,x):
         x = self.up(x)
         return x
+    
+'''    
+ two-layer residual unit: two conv with BN/relu and identity mapping
+'''
+class residualUnit(nn.Module):
+    def __init__(self, in_size, out_size, kernel_size=3,stride=1, padding=1, activation=F.relu):
+        super(residualUnit, self).__init__()
+        self.conv1 = nn.Conv3d(in_size, out_size, kernel_size, stride=1, padding=1)
+        init.xavier_uniform(self.conv1.weight, gain = np.sqrt(2.0)) #or gain=1
+        init.constant(self.conv1.bias, 0)
+        self.conv2 = nn.Conv3d(out_size, out_size, kernel_size, stride=1, padding=1)
+        init.xavier_uniform(self.conv2.weight, gain = np.sqrt(2.0)) #or gain=1
+        init.constant(self.conv2.bias, 0)
+        self.activation = activation
+        self.bn1 = nn.BatchNorm3d(out_size)
+        self.bn2 = nn.BatchNorm3d(out_size)
+        self.in_size = in_size
+        self.out_size = out_size
+        if in_size != out_size:
+            self.convX = nn.Conv3d(in_size, out_size, kernel_size=1, stride=1, padding=0)
+            self.bnX = nn.BatchNorm3d(out_size)
+
+    def forward(self, x):
+        out1 = self.activation(self.bn1(self.conv1(x)))
+        out2 = self.activation(self.bn1(self.conv2(out1)))
+        if self.in_size!=self.out_size:
+            bridge = self.activation(self.bnX(self.convX(x)))
+        output = torch.add(out2, bridge)
+
+        return output
+    
+'''
+    Ordinary UNet Conv Block
+'''
+class UNetConBlock(nn.Module):
+    def __init__(self, in_size, out_size, kernel_size=3, activation=F.relu):
+        super(UNetConBlock, self).__init__()
+        self.conv = nn.Conv3d(in_size, out_size, kernel_size, stride=1, padding=1)
+        self.bn = nn.BatchNorm3d(out_size)
+        self.conv2 = nn.Conv3d(out_size, out_size, kernel_size, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm3d(out_size)
+        self.activation = activation
+
+
+        init.xavier_uniform(self.conv.weight, gain = np.sqrt(2.0))
+        init.constant(self.conv.bias,0)
+        init.xavier_uniform(self.conv2.weight, gain = np.sqrt(2.0))
+        init.constant(self.conv2.bias,0)
+    def forward(self, x):
+        out = self.activation(self.bn(self.conv(x)))
+        out = self.activation(self.bn2(self.conv2(out)))
+
+        return out
+
+'''
+    Ordinary Residual UNet-Up Conv Block
+'''
+class UNetUpResBlock(nn.Module):
+    def __init__(self, in_size, out_size, kernel_size=3, activation=F.relu, space_dropout=False):
+        super(UNetUpResBlock, self).__init__()
+        self.up = nn.ConvTranspose3d(in_size, out_size, 2, stride=2)
+        self.bnup = nn.BatchNorm3d(out_size)
+
+        init.xavier_uniform(self.up.weight, gain = np.sqrt(2.0))
+        init.constant(self.up.bias,0)
+
+        self.activation = activation
+
+        self.resUnit = residualUnit(in_size, out_size, kernel_size = kernel_size)
+
+    def center_crop(self, layer, target_size):
+        batch_size, n_channels, layer_width, layer_height, layer_depth = layer.size()
+        xy1 = (layer_width - target_size) // 2
+        return layer[:, :, xy1:(xy1 + target_size), xy1:(xy1 + target_size), xy1:(xy1 + target_size)]
+
+    def forward(self, x, bridge):
+        #print 'x.shape: ',x.shape
+        up = self.activation(self.bnup(self.up(x)))
+        #crop1 = self.center_crop(bridge, up.size()[2])
+        #print 'up.shape: ',up.shape, ' crop1.shape: ',crop1.shape
+        crop1 = bridge
+        out = torch.cat([up, crop1], 1)
+
+        out = self.resUnit(out)
+        # out = self.activation(self.bn2(self.conv2(out)))
+
+        return out
     
 # Generator Code
 class Generator(nn.Module):
@@ -135,6 +226,128 @@ class Generator(nn.Module):
         output = tanh(d1)
 
         return output
+    
+
+class Generator2(nn.Module):
+    def __init__(self, ngpu, in_channel:int=1, channel:int=64, out_channel:int=1):
+        super(Generator2, self).__init__()
+        self.ngpu = ngpu
+        _c = channel
+
+        self.relu = nn.ReLU()
+        self.in_channel = in_channel
+        self.tp_conv1 = nn.ConvTranspose3d(in_channel, _c*8, kernel_size=4, stride=1, padding=0, bias=False)
+        self.bn1 = nn.BatchNorm3d(_c*8)
+        
+        self.tp_conv2 = nn.Conv3d(_c*8, _c*4, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm3d(_c*4)
+        
+        self.tp_conv3 = nn.Conv3d(_c*4, _c*2, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn3 = nn.BatchNorm3d(_c*2)
+        
+        self.tp_conv4 = nn.Conv3d(_c*2, _c, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn4 = nn.BatchNorm3d(_c)
+        
+        self.tp_conv5 = nn.Conv3d(_c, out_channel, kernel_size=3, stride=1, padding=1, bias=False)
+        
+    def forward(self, x):
+
+        #noise = noise.view(-1,self.noise,1,1,1)
+        h = self.tp_conv1(x)
+        h = self.relu(self.bn1(h))
+        
+        h = F.upsample(h,scale_factor = 2)
+        h = self.tp_conv2(h)
+        h = self.relu(self.bn2(h))
+     
+        h = F.upsample(h,scale_factor = 2)
+        h = self.tp_conv3(h)
+        h = self.relu(self.bn3(h))
+
+        h = F.upsample(h,scale_factor = 2)
+        h = self.tp_conv4(h)
+        h = self.relu(self.bn4(h))
+
+        h = F.upsample(h,scale_factor = 2)
+        h = self.tp_conv5(h)
+
+        h = F.tanh(h)
+
+        return h
+    
+'''
+    ResUNet (lateral connection) with long-skip residual connection (from 1st to last layer)
+'''
+
+
+class ResUNet_LRes(nn.Module):
+    def __init__(self, ngpu, in_channel=310, n_classes=155, dp_prob=0):
+        super(ResUNet_LRes, self).__init__()
+        self.ngpu = ngpu
+        #         self.imsize = imsize
+
+        self.activation = F.relu
+
+        self.pool1 = nn.MaxPool3d(2)
+        self.pool2 = nn.MaxPool3d(2)
+        self.pool3 = nn.MaxPool3d(2)
+        # self.pool4 = nn.MaxPool3d(2)
+
+        self.conv_block1_64 = UNetConBlock(in_channel, 32)
+        self.conv_block64_128 = residualUnit(32, 64)
+        self.conv_block128_256 = residualUnit(64, 128)
+        self.conv_block256_512 = residualUnit(128, 256)
+        # self.conv_block512_1024 = residualUnit(512, 1024)
+        # this kind of symmetric design is awesome, it automatically solves the number of channels during upsamping
+        # self.up_block1024_512 = UNetUpResBlock(1024, 512)
+        self.up_block512_256 = UNetUpResBlock(256, 128)
+        self.up_block256_128 = UNetUpResBlock(128, 64)
+        self.up_block128_64 = UNetUpResBlock(64, 32)
+        self.Dropout = nn.Dropout3d(p=dp_prob)
+        self.last = nn.Conv3d(32, n_classes, 1, stride=1)
+
+    def forward(self, x, res_x):
+        #         print 'line 70 ',x.size()
+        block1 = self.conv_block1_64(x)
+        # print 'block1.shape: ', block1.shape
+        pool1 = self.pool1(block1)
+        # print 'pool1.shape: ', block1.shape
+        pool1_dp = self.Dropout(pool1)
+        # print 'pool1_dp.shape: ', pool1_dp.shape
+        block2 = self.conv_block64_128(pool1_dp)
+        pool2 = self.pool2(block2)
+
+        pool2_dp = self.Dropout(pool2)
+
+        block3 = self.conv_block128_256(pool2_dp)
+        pool3 = self.pool3(block3)
+
+        pool3_dp = self.Dropout(pool3)
+
+        block4 = self.conv_block256_512(pool3_dp)
+        # pool4 = self.pool4(block4)
+        #
+        # pool4_dp = self.Dropout(pool4)
+        #
+        # # block5 = self.conv_block512_1024(pool4_dp)
+        #
+        # up1 = self.up_block1024_512(block5, block4)
+
+        up2 = self.up_block512_256(block4, block3)
+
+        up3 = self.up_block256_128(up2, block2)
+
+        up4 = self.up_block128_64(up3, block1)
+
+        last = self.last(up4)
+        # print 'res_x.shape is ',res_x.shape,' and last.shape is ',last.shape
+        if len(res_x.shape) == 3:
+            res_x = res_x.unsqueeze(1)
+        out = torch.add(last, res_x)
+
+        # print 'out.shape is ',out.shape
+        return out
+
 
 
 
@@ -205,3 +418,33 @@ class Discriminator(nn.Module):
 
     def forward(self, input):
         return self.main(input)
+    
+class Discriminator2(nn.Module):
+    def __init__(self, ngpu, channel=512,out_class=1,is_dis =True):
+        super(Discriminator2, self).__init__()
+        self.ngpu = ngpu
+        self.is_dis=is_dis
+        self.channel = channel
+        n_class = out_class 
+        
+        self.conv1 = nn.Conv3d(155, channel//8, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv3d(channel//8, channel//4, kernel_size=4, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm3d(channel//4)
+        self.conv3 = nn.Conv3d(channel//4, channel//2, kernel_size=4, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm3d(channel//2)
+        self.conv4 = nn.Conv3d(channel//2, channel, kernel_size=4, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm3d(channel)
+        self.conv5 = nn.Conv3d(channel, n_class, kernel_size=4, stride=1, padding=0)
+        
+    def forward(self, x, _return_activations=False):
+        h1 = F.leaky_relu(self.conv1(x), negative_slope=0.2)
+        h2 = F.leaky_relu(self.bn2(self.conv2(h1)), negative_slope=0.2)
+        h3 = F.leaky_relu(self.bn3(self.conv3(h2)), negative_slope=0.2)
+        h4 = F.leaky_relu(self.bn4(self.conv4(h3)), negative_slope=0.2)
+        h5 = self.conv5(h4)
+        flatten = nn.Flatten()
+        #h5 = flatten(h5)
+        linear = nn.Linear(cf.ndf * 8 * 15 * 15, 1, bias=False)
+        output = h5
+        
+        return output
