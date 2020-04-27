@@ -351,38 +351,38 @@ class ResUNet_LRes(nn.Module):
 
 
 
-class Generator(nn.Module):
-    def __init__(self, ngpu):
-        super(Generator, self).__init__()
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # input is Z, going into a convolution
-            nn.ConvTranspose2d(cf.nz, cf.ngf * 16, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(cf.ngf * 16),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(cf.ngf * 16, cf.ngf * 8, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(cf.ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(cf.ngf * 8, cf.ngf * 4, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(cf.ngf * 4),
-            nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d(cf.ngf * 4, cf.ngf * 2, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(cf.ngf * 2),
-            nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(cf.ngf * 2, cf.ngf, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(cf.ngf),
-            nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d(cf.ngf, cf.nc, 3, 1, 1, bias=False),
-            nn.Tanh()
-            # state size. (nc) x 240 x 240
-        )
+# class Generator(nn.Module):
+#     def __init__(self, ngpu):
+#         super(Generator, self).__init__()
+#         self.ngpu = ngpu
+#         self.main = nn.Sequential(
+#             # input is Z, going into a convolution
+#             nn.ConvTranspose2d(cf.nz, cf.ngf * 16, 3, 1, 1, bias=False),
+#             nn.BatchNorm2d(cf.ngf * 16),
+#             nn.ReLU(True),
+#             nn.ConvTranspose2d(cf.ngf * 16, cf.ngf * 8, 3, 1, 1, bias=False),
+#             nn.BatchNorm2d(cf.ngf * 8),
+#             nn.ReLU(True),
+#             # state size. (ngf*8) x 4 x 4
+#             nn.ConvTranspose2d(cf.ngf * 8, cf.ngf * 4, 3, 1, 1, bias=False),
+#             nn.BatchNorm2d(cf.ngf * 4),
+#             nn.ReLU(True),
+#             # state size. (ngf*4) x 8 x 8
+#             nn.ConvTranspose2d(cf.ngf * 4, cf.ngf * 2, 3, 1, 1, bias=False),
+#             nn.BatchNorm2d(cf.ngf * 2),
+#             nn.ReLU(True),
+#             # state size. (ngf*2) x 16 x 16
+#             nn.ConvTranspose2d(cf.ngf * 2, cf.ngf, 3, 1, 1, bias=False),
+#             nn.BatchNorm2d(cf.ngf),
+#             nn.ReLU(True),
+#             # state size. (ngf) x 32 x 32
+#             nn.ConvTranspose2d(cf.ngf, cf.nc, 3, 1, 1, bias=False),
+#             nn.Tanh()
+#             # state size. (nc) x 240 x 240
+#         )
 
-    def forward(self, input):
-        return self.main(input)
+#     def forward(self, input):
+#         return self.main(input)
     
     
 # Discriminator code    
