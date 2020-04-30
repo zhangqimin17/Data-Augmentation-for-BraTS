@@ -25,9 +25,9 @@ class conv_block(nn.Module):
     def __init__(self, ch_in, ch_out):
         super(conv_block, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.Conv3d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
             nn.ReLU(inplace = True),
-            nn.Conv2d(ch_out, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.Conv3d(ch_out, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
             nn.ReLU(inplace = True)
         )
 
@@ -40,7 +40,7 @@ class up_conv(nn.Module):
         super(up_conv, self).__init__()
         self.up = nn.Sequential(
             nn.Upsample(scale_factor = 2),
-            nn.Conv2d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.Conv3d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
             nn.ReLU(inplace = True)
         )
 
@@ -104,6 +104,7 @@ class UNetConBlock(nn.Module):
 '''
     Ordinary Residual UNet-Up Conv Block
 '''
+
 class UNetUpResBlock(nn.Module):
     def __init__(self, in_size, out_size, kernel_size=3, activation=F.relu, space_dropout=False):
         super(UNetUpResBlock, self).__init__()
@@ -136,6 +137,12 @@ class UNetUpResBlock(nn.Module):
         return out
     
 # Generator Code
+def crop_and_concat(upsampled, bypass, crop=True):
+    if crop:
+        c = (bypass.size()[2] - upsampled.size()[2]) // 2
+        bypass = F.pad(bypass, (-c, -c, -c, -c))
+    return torch.cat((upsampled, bypass), 1)
+
 class Generator(nn.Module):
     '''
     This is the Pytorch version of U-Net Architecture.
@@ -146,7 +153,7 @@ class Generator(nn.Module):
     Output Size of Network - (310,240,240).
         Shape Format :  (Channel, Width, Height)
     '''
-    def __init__(self, ngpu, img_ch = 155 * 2, output_ch = 155, first_layer_numKernel = 64):
+    def __init__(self, ngpu, img_ch = 2, output_ch = 1, first_layer_numKernel = 32):
         '''
         Constructor for UNet class.
         Parameters:
@@ -157,7 +164,8 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.ngpu = ngpu
         
-        self.Maxpool = nn.MaxPool2d(kernel_size = 2, stride = 2)
+        self.Maxpool = nn.MaxPool3d(kernel_size = 2, stride = 2, ceil_mode = True)
+        
 
         self.Conv1 = conv_block(ch_in = img_ch, ch_out = first_layer_numKernel)
         self.Conv2 = conv_block(ch_in = first_layer_numKernel, ch_out = 2 * first_layer_numKernel)
@@ -176,7 +184,8 @@ class Generator(nn.Module):
         self.Up2 = up_conv(ch_in = 2 * first_layer_numKernel, ch_out = first_layer_numKernel)
         self.Up_conv2 = conv_block(ch_in = 2 * first_layer_numKernel, ch_out = first_layer_numKernel)
 
-        self.Conv_1x1 = nn.Conv2d(first_layer_numKernel, output_ch, kernel_size = 1, stride = 1, padding = 0)
+        self.Conv_1x1 = nn.Conv3d(first_layer_numKernel, output_ch, kernel_size = 1, stride = 1, padding = 0)
+        
 
     def forward(self, x):
         '''
@@ -210,14 +219,17 @@ class Generator(nn.Module):
         d5 = self.Up_conv5(d5)
         
         d4 = self.Up4(d5)
+        d4 = d4[:, :, 0:39, :, :]
         d4 = torch.cat((x3, d4), dim = 1)
         d4 = self.Up_conv4(d4)
 
         d3 = self.Up3(d4)
+        d3 = d3[:, :, 0:78, :, :]
         d3 = torch.cat((x2, d3), dim = 1)
         d3 = self.Up_conv3(d3)
 
         d2 = self.Up2(d3)
+        d2 = d2[:, :, 0:155, :, :]
         d2 = torch.cat((x1, d2), dim = 1)
         d2 = self.Up_conv2(d2)
 
@@ -281,7 +293,7 @@ class Generator2(nn.Module):
 
 
 class ResUNet_LRes(nn.Module):
-    def __init__(self, ngpu, in_channel=310, n_classes=155, dp_prob=0):
+    def __init__(self, ngpu, in_channel=2, n_classes=1, dp_prob=0):
         super(ResUNet_LRes, self).__init__()
         self.ngpu = ngpu
         #         self.imsize = imsize
