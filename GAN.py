@@ -153,7 +153,7 @@ class Generator(nn.Module):
     Output Size of Network - (310,240,240).
         Shape Format :  (Channel, Width, Height)
     '''
-    def __init__(self, ngpu, img_ch = 2, output_ch = 1, first_layer_numKernel = 32):
+    def __init__(self, ngpu, img_ch = 2, output_ch = 1, first_layer_numKernel = 8):
         '''
         Constructor for UNet class.
         Parameters:
@@ -426,6 +426,7 @@ class Discriminator(nn.Module):
             # state size. (ndf*8) x 15 x 15
             nn.Flatten(),
             nn.Linear(cf.ndf * 8 * 15 * 15, 1, bias=False),
+            nn.Sigmoid()
         )
 
     def forward(self, input):
