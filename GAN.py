@@ -25,9 +25,11 @@ class conv_block(nn.Module):
     def __init__(self, ch_in, ch_out):
         super(conv_block, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv3d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.Conv2d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.BatchNorm2d(ch_out),
             nn.ReLU(inplace = True),
-            nn.Conv3d(ch_out, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.Conv2d(ch_out, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.BatchNorm2d(ch_out),
             nn.ReLU(inplace = True)
         )
 
@@ -40,7 +42,8 @@ class up_conv(nn.Module):
         super(up_conv, self).__init__()
         self.up = nn.Sequential(
             nn.Upsample(scale_factor = 2),
-            nn.Conv3d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.Conv2d(ch_in, ch_out, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.BatchNorm2d(ch_out),
             nn.ReLU(inplace = True)
         )
 
@@ -153,7 +156,7 @@ class Generator(nn.Module):
     Output Size of Network - (310,240,240).
         Shape Format :  (Channel, Width, Height)
     '''
-    def __init__(self, ngpu, img_ch = 2, output_ch = 1, first_layer_numKernel = 8):
+    def __init__(self, ngpu, img_ch = 310, output_ch = 155, first_layer_numKernel = 64):
         '''
         Constructor for UNet class.
         Parameters:
@@ -164,7 +167,7 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.ngpu = ngpu
         
-        self.Maxpool = nn.MaxPool3d(kernel_size = 2, stride = 2, ceil_mode = True)
+        self.Maxpool = nn.MaxPool2d(kernel_size = 2, stride = 2, ceil_mode = True)
         
 
         self.Conv1 = conv_block(ch_in = img_ch, ch_out = first_layer_numKernel)
@@ -184,7 +187,7 @@ class Generator(nn.Module):
         self.Up2 = up_conv(ch_in = 2 * first_layer_numKernel, ch_out = first_layer_numKernel)
         self.Up_conv2 = conv_block(ch_in = 2 * first_layer_numKernel, ch_out = first_layer_numKernel)
 
-        self.Conv_1x1 = nn.Conv3d(first_layer_numKernel, output_ch, kernel_size = 1, stride = 1, padding = 0)
+        self.Conv_1x1 = nn.Conv2d(first_layer_numKernel, output_ch, kernel_size = 1, stride = 1, padding = 0)
         
 
     def forward(self, x):
@@ -219,17 +222,17 @@ class Generator(nn.Module):
         d5 = self.Up_conv5(d5)
         
         d4 = self.Up4(d5)
-        d4 = d4[:, :, 0:39, :, :]
+        #d4 = d4[:, :, 0:39, :, :]
         d4 = torch.cat((x3, d4), dim = 1)
         d4 = self.Up_conv4(d4)
 
         d3 = self.Up3(d4)
-        d3 = d3[:, :, 0:78, :, :]
+        #d3 = d3[:, :, 0:78, :, :]
         d3 = torch.cat((x2, d3), dim = 1)
         d3 = self.Up_conv3(d3)
 
         d2 = self.Up2(d3)
-        d2 = d2[:, :, 0:155, :, :]
+        #d2 = d2[:, :, 0:155, :, :]
         d2 = torch.cat((x1, d2), dim = 1)
         d2 = self.Up_conv2(d2)
 
@@ -406,6 +409,7 @@ class Discriminator(nn.Module):
         self.main = nn.Sequential(
             # input is 155 x 240 x 240
             nn.Conv2d(cf.nc, cf.ndf, kernel_size = 3, stride = 1, padding = 1, bias = True),
+            nn.BatchNorm2d(cf.ndf),
             nn.LeakyReLU(0.2, inplace=True),
             nn.MaxPool2d(2, 2),
             # state size. (ndf) x 120 x 120
